@@ -1,6 +1,14 @@
+<div align="center">
+  <img src="frontend/public/logo.png" alt="Stoned Idle Logo" width="200" height="200">
+</div>
+
 # 🌿 Stoned Idle Game
 
-Um Idle Game temático para maiores de 18 anos, com progressão inspirada na cultura cannabis.
+<div align="center">
+  <strong>Um Idle Game temático para maiores de 18 anos, com progressão inspirada na cultura cannabis.</strong>
+</div>
+
+<br>
 
 ## 🔧 Stack Tecnológica
 
