@@ -19,6 +19,7 @@ export default function GamePage() {
   const [cooldownProgress, setCooldownProgress] = useState(0);
   const [canTragar, setCanTragar] = useState(true);
   const [showParticles, setShowParticles] = useState(false);
+  const [particleKey, setParticleKey] = useState(0);
   const [activeTab, setActiveTab] = useState<'game' | 'shop'>('game');
   const router = useRouter();
 
@@ -113,6 +114,7 @@ export default function GamePage() {
         setGameState(prev => prev ? { ...prev, canUpgrade } : null);
         
         setShowParticles(true);
+        setParticleKey(prev => prev + 1);
         setTimeout(() => setShowParticles(false), 100);
         
         if (!strain.isPassive) {
@@ -270,7 +272,7 @@ export default function GamePage() {
                     <div className="absolute inset-0 pointer-events-none">
                       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                         <ParticleSystem 
-                          key={Math.random()} 
+                          key={`particles-${particleKey}`} 
                           isActive={showParticles}
                           points={strain?.multiplier || 1}
                         />

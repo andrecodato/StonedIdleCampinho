@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 interface Particle {
-  id: number;
+  id: string;
   x: number;
   y: number;
   vx: number;
@@ -29,7 +29,7 @@ const ParticleSystem: React.FC<ParticleSystemProps> = ({ isActive, points, class
 
     for (let i = 0; i < particleCount; i++) {
       newParticles.push({
-        id: Date.now() + i,
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${i}`,
         x: 50 + (Math.random() - 0.5) * 20, // Centro com variação
         y: 50 + (Math.random() - 0.5) * 20,
         vx: (Math.random() - 0.5) * 100, // Velocidade horizontal
