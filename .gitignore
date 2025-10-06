@@ -60,3 +60,6 @@ go.work
 # Temporary files
 tmp/
 temp/
+# Backend data storage
+backend/data/
+backend/*.json

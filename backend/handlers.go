@@ -11,9 +11,15 @@ import (
 type Player struct {
 	ID            int                    `json:"id"`
 	Nickname      string                 `json:"nickname"`
+	Level         int                    `json:"level"`
+	Experience    int                    `json:"experience"`
 	StonedPoints  int                    `json:"stonedPoints"`
 	CurrentStrain int                    `json:"currentStrain"`
 	PlayerStrains map[int]*PlayerStrain  `json:"playerStrains"` // Strains específicas do player
+	CultivoSlots  map[int]*PlantSlot     `json:"cultivoSlots"`  // Slots de cultivo
+	CultivoUpgrades map[string]*CultivoUpgrade `json:"cultivoUpgrades"` // Upgrades de cultivo
+	CultivoStats  *CultivoStats          `json:"cultivoStats"`  // Estatísticas de cultivo
+	Inventory     map[string]*InventoryItem `json:"inventory"`     // Inventário do player
 	CreatedAt     time.Time              `json:"createdAt"`
 	UpdatedAt     time.Time              `json:"updatedAt"`
 }
@@ -40,6 +46,41 @@ type Strain struct {
 	MaxUpgradeLevel  int     `json:"maxUpgradeLevel"`  // Máximo de upgrades
 	UpgradeCost      int     `json:"upgradeCost"`      // Custo do próximo upgrade
 	IsPassive        bool    `json:"isPassive"`        // Se é passivo ou não
+}
+
+// Estruturas para Cultivo
+type PlantSlot struct {
+	ID            int       `json:"id"`
+	StrainID      string    `json:"strainId"`
+	PlantedAt     int64     `json:"plantedAt"`     // Timestamp em ms
+	LastWatered   int64     `json:"lastWatered"`   // Timestamp em ms
+	CurrentStage  int       `json:"currentStage"`
+	IsWilted      bool      `json:"isWilted"`
+}
+
+type CultivoUpgrade struct {
+	ID       string `json:"id"`
+	Level    int    `json:"level"`
+}
+
+type CultivoStats struct {
+	TotalHarvests    int     `json:"totalHarvests"`
+	TotalYield       float64 `json:"totalYield"`
+	TotalWatering    int     `json:"totalWatering"`
+	WiltedPlants     int     `json:"wiltedPlants"`
+	PerfectHarvests  int     `json:"perfectHarvests"`
+}
+
+// Estruturas para Inventário
+type InventoryItem struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Quantity    int    `json:"quantity"`
+	Type        string `json:"type"`        // "flower", "seed", "extract", etc.
+	Rarity      string `json:"rarity"`      // "common", "uncommon", "rare", "epic", "legendary"
+	Icon        string `json:"icon"`
+	StrainID    string `json:"strainId"`    // ID da strain relacionada
 }
 
 type LoginRequest struct {
@@ -122,14 +163,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		player = &Player{
 			ID:            len(tempPlayers) + 1,
 			Nickname:      req.Nickname,
+			Level:         1,
+			Experience:    0,
 			StonedPoints:  0,
 			CurrentStrain: 1, // Prensado Mofado
 			PlayerStrains: playerStrains,
+			CultivoSlots:  make(map[int]*PlantSlot),
+			CultivoUpgrades: make(map[string]*CultivoUpgrade),
+			CultivoStats:  &CultivoStats{},
+			Inventory:     make(map[string]*InventoryItem),
 			CreatedAt:     time.Now(),
 			UpdatedAt:     time.Now(),
 		}
 		tempPlayers[req.Nickname] = player
 		log.Printf("Novo player criado: %s", req.Nickname)
+		SaveAsync() // Salvar novo jogador
 	} else {
 		log.Printf("Player existente logado: %s", req.Nickname)
 	}
@@ -213,6 +261,7 @@ func updateProgress(w http.ResponseWriter, r *http.Request) {
 	player.UpdatedAt = time.Now()
 
 	log.Printf("Player %s agora tem %d pontos", nickname, player.StonedPoints)
+	SaveAsync() // Salvar após ganhar pontos
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -313,6 +362,7 @@ func upgradeStrain(w http.ResponseWriter, r *http.Request) {
 	player.StonedPoints -= upgradeCost
 	currentPlayerStrain.UpgradeLevel++
 	player.UpdatedAt = time.Now()
+	SaveAsync() // Salvar após upgrade
 
 	// Verificar se deve se tornar passiva
 	if shouldBecomePassiveFromPlayerStrain(currentPlayerStrain) {
@@ -492,4 +542,272 @@ func switchStrain(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"newCurrentStrain": req.StrainID,
 	})
+}
+// ====== CULTIVO HANDLERS ======
+
+// Handler para salvar slots de cultivo
+func saveCultivoSlots(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+var req struct {
+Slots map[int]*PlantSlot `json:"slots"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+player.CultivoSlots = req.Slots
+player.UpdatedAt = time.Now()
+
+log.Printf("Slots de cultivo salvos para player %s", nickname)
+
+w.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success": true,
+})
+}
+
+// Handler para obter slots de cultivo
+func getCultivoSlots(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+json.NewEncoder(w).Encode(map[string]interface{}{
+"slots": player.CultivoSlots,
+})
+}
+
+// Handler para salvar upgrades de cultivo
+func saveCultivoUpgrades(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+var req struct {
+Upgrades map[string]*CultivoUpgrade `json:"upgrades"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+player.CultivoUpgrades = req.Upgrades
+player.UpdatedAt = time.Now()
+
+log.Printf("Upgrades de cultivo salvos para player %s", nickname)
+
+w.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success": true,
+})
+}
+
+// Handler para obter upgrades de cultivo
+func getCultivoUpgrades(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+json.NewEncoder(w).Encode(map[string]interface{}{
+"upgrades": player.CultivoUpgrades,
+})
+}
+
+// Handler para salvar estatísticas de cultivo
+func saveCultivoStats(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+var req struct {
+Stats *CultivoStats `json:"stats"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+player.CultivoStats = req.Stats
+player.UpdatedAt = time.Now()
+
+log.Printf("Estatísticas de cultivo salvas para player %s", nickname)
+
+w.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success": true,
+})
+}
+
+// Handler para obter estatísticas de cultivo
+func getCultivoStats(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+json.NewEncoder(w).Encode(map[string]interface{}{
+"stats": player.CultivoStats,
+})
+}
+
+// ====== INVENTORY HANDLERS ======
+
+// Handler para adicionar item ao inventário
+func addInventoryItem(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+var req struct {
+Item *InventoryItem `json:"item"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+// Se o item já existe, aumenta a quantidade
+if existingItem, exists := player.Inventory[req.Item.ID]; exists {
+existingItem.Quantity += req.Item.Quantity
+} else {
+player.Inventory[req.Item.ID] = req.Item
+}
+
+player.UpdatedAt = time.Now()
+
+log.Printf("Player %s adicionou %dx %s ao inventário", nickname, req.Item.Quantity, req.Item.Name)
+
+w.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success": true,
+"inventory": player.Inventory,
+})
+}
+
+// Handler para obter inventário
+func getInventory(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+json.NewEncoder(w).Encode(map[string]interface{}{
+"inventory": player.Inventory,
+})
+}
+
+// Handler para salvar inventário completo
+func saveInventory(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+
+nickname := r.URL.Query().Get("nickname")
+if nickname == "" {
+http.Error(w, `{"error": "Nickname é obrigatório"}`, http.StatusBadRequest)
+return
+}
+
+var req struct {
+Inventory map[string]*InventoryItem `json:"inventory"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+return
+}
+
+player, exists := tempPlayers[nickname]
+if !exists {
+http.Error(w, `{"error": "Player não encontrado"}`, http.StatusNotFound)
+return
+}
+
+	player.Inventory = req.Inventory
+	player.UpdatedAt = time.Now()
+
+	log.Printf("Inventário salvo para player %s", nickname)
+	SaveAsync() // Salvar inventáriow.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success": true,
+})
 }

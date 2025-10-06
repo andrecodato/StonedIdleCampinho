@@ -1,4 +1,14 @@
-export type TabType = 'cultivo' | 'agricultura' | 'municipio' | 'loja';
+export type TabType = 
+  | 'cultivo' 
+  | 'culinaria' 
+  | 'artesanato' 
+  | 'quimica' 
+  | 'comercio' 
+  | 'exploracao' 
+  | 'inventario'
+  | 'agricultura' 
+  | 'municipio' 
+  | 'loja';
 
 export interface ActionData {
   id: string;
